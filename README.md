@@ -10,7 +10,7 @@ An AgentDE extension that shows each agent's **workstream** beside its chat. A w
 | ◇ Pin | In the viewer's header: pins the file shown to the tab's workstream |
 | Attention ring | A soft amber ring on tabs whose agent asked something without stopping |
 | Usage widget | How long agents worked and roughly what it cost, per workstream, for today, 7 days or all time (needs `agentde-widgets`) |
-| Overlap notes | An FYI when two agents in one group's folder edit the same file within 30 minutes |
+| Overlap notes | One FYI per pair of agents in one group's folder that edit the same files within 30 minutes, listing the files |
 
 Worktrees and branches are never removed for you: merge the branch, then `git worktree remove <folder>`. Tickets are tracker-neutral (`ENG-123`, `acme/app#12`, or a link); their live state shows when an extension provides a ticket provider for the tracker, such as `agentde-linear`.
 
@@ -18,7 +18,7 @@ Panel sections, the file format and the server's tools: [workstream-mcp/docs/WOR
 
 ## Include it
 
-Clone this repo, `agentde-widgets` and `workstream-mcp` beside `agentde/`; it's in AgentDE's default `extensions.json`, with the server as a helper bundled into the app:
+It's in AgentDE's default `extensions.json`, so building AgentDE clones it (and `agentde-widgets` and `workstream-mcp`) beside `agentde/`, with the server as a helper bundled into the app:
 
 ```json
 { "package": "../agentde-workstreams", "product": "AgentDEWorkstreams", "create": "WorkstreamsExtension()",

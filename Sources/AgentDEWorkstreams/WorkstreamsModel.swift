@@ -502,27 +502,26 @@ public final class WorkstreamsModel {
             }
             guard agents.count >= 2 else { continue }
             let byID = Dictionary(agents.map { ($0.tab.id.uuidString, $0) }, uniquingKeysWith: { a, _ in a })
-            for overlap in Overlaps.find(agents.map { ($0.tab.id.uuidString, $0.facts) }, now: now) {
-                guard let a = byID[overlap.first], let b = byID[overlap.second] else { continue }
-                let key = [overlap.path, a.session, b.session].sorted().joined(separator: "|")
-                guard notedOverlaps[key] == nil else { continue }
-                notedOverlaps[key] = now
+            // One note per pair of agents, listing every file they share, rewritten when a file is added.
+            for (pair, paths) in Self.overlapsByPair(Overlaps.find(agents.map { ($0.tab.id.uuidString, $0.facts) }, now: now)) {
+                guard let a = byID[pair.first], let b = byID[pair.second] else { continue }
+                let keys = paths.map { [$0, a.session, b.session].sorted().joined(separator: "|") }
+                guard keys.contains(where: { notedOverlaps[$0] == nil }) else { continue }
+                for key in keys { notedOverlaps[key] = now }
                 noted = true
-                let file = (overlap.path as NSString).lastPathComponent
-                let id = "ov-" + String(Self.stableHash(key), radix: 36)
+                let files = paths.map { ($0 as NSString).lastPathComponent }
+                let id = "ov-" + String(Self.stableHash([a.session, b.session].sorted().joined(separator: "|")), radix: 36)
                 let expires = now.addingTimeInterval(86_400)
-                DebugLog.log("overlapping edits of \(file) by \(a.tab.title) and \(b.tab.title)", "workstream")
+                DebugLog.log("overlapping edits of \(files.joined(separator: ", ")) by \(a.tab.title) and \(b.tab.title)", "workstream")
                 if let wa = workstreamID(of: a.tab), wa == workstreamID(of: b.tab) {
-                    modifyWorkstream(wa) {
-                        $0.addNote(.init(id: id, text: "\(file) is being edited by both \(a.tab.title) and \(b.tab.title)",
-                                         at: now, by: "app", expires: expires), at: now)
-                    }
+                    let text = Self.overlapText(files, a.tab.title, b.tab.title)
+                    modifyWorkstream(wa) { $0.replaceNote(.init(id: id, text: text, at: now, by: "app", expires: expires), at: now) }
                 } else {
                     for (me, other) in [(a, b), (b, a)] {
                         guard let workstream = workstreamID(of: me.tab) else { continue }
+                        let text = Self.overlapText(files, nil, other.tab.title)
                         modifyWorkstream(workstream) {
-                            $0.addNote(.init(id: id, text: "\(file) is also being edited by \(other.tab.title)",
-                                             agent: me.session, at: now, by: "app", expires: expires), at: now)
+                            $0.replaceNote(.init(id: id, text: text, agent: me.session, at: now, by: "app", expires: expires), at: now)
                         }
                     }
                 }
@@ -531,6 +530,28 @@ public final class WorkstreamsModel {
         if noted {
             UserDefaults.standard.set(notedOverlaps.mapValues(\.timeIntervalSince1970), forKey: "notedOverlaps")
         }
+    }
+
+    /// Overlapping files grouped by the pair of agents (tab ids) editing them, files in a stable order.
+    static func overlapsByPair(_ overlaps: [Overlaps.Overlap]) -> [(pair: (first: String, second: String), paths: [String])] {
+        var byPair: [String: (first: String, second: String, paths: [String])] = [:]
+        for overlap in overlaps {
+            let (first, second) = overlap.first < overlap.second ? (overlap.first, overlap.second) : (overlap.second, overlap.first)
+            byPair[first + "|" + second, default: (first, second, [])].paths.append(overlap.path)
+        }
+        return byPair.keys.sorted().map { key in
+            let entry = byPair[key]!
+            return ((entry.first, entry.second), Array(Set(entry.paths)).sorted())
+        }
+    }
+
+    /// "x.py is being edited by both A and B", or for an agent's own note, "x.py is also being edited by B";
+    /// several files are listed, the first four by name.
+    static func overlapText(_ files: [String], _ me: String?, _ other: String) -> String {
+        let shown = files.prefix(4).joined(separator: ", ") + (files.count > 4 ? " and \(files.count - 4) more" : "")
+        if files.count == 1 { return me.map { "\(shown) is being edited by both \($0) and \(other)" } ?? "\(shown) is also being edited by \(other)" }
+        return me.map { "\(files.count) files are being edited by both \($0) and \(other): \(shown)" }
+            ?? "\(files.count) files are also being edited by \(other): \(shown)"
     }
 
     /// FNV-1a, so a note's id is the same across launches.
