@@ -235,11 +235,9 @@ public final class WorkstreamsModel {
                 let folder = tab.groupFolder
                 workstreamQueue.async { [weak self] in
                     do {
-                        if current == nil {
-                            try store.moveAgent(session: session, kind: kind, tab: tabID, to: target, folder: folder)
-                        } else {
-                            try store.update(target) { $0.attach(session: session, kind: kind, tab: tabID) }
-                        }
+                        // Decided from the index as last read; `adopt` checks the files again, so an agent that
+                        // switched in the meantime (say, a fork that started its own workstream) stays put.
+                        try store.adopt(session: session, kind: kind, tab: tabID, fallback: target, folder: folder)
                     } catch {
                         DebugLog.log("couldn't attach session \(session.prefix(8)) to workstream \(target.prefix(8)): \(error)", "workstream")
                     }
