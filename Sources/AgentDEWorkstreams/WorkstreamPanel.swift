@@ -524,9 +524,9 @@ private struct AskCard: View {
                 Spacer(minLength: 4)
                 if hovering { DismissButton(help: "Dismiss, and tell the agent no answer is needed") { store.dismissAsk(ask, in: tab) } }
             }
-            if !ask.options.isEmpty {
+            if !ask.answers.isEmpty {
                 FlowRow(spacing: 6) {
-                    ForEach(ask.options, id: \.self) { option in
+                    ForEach(ask.answers, id: \.self) { option in
                         let isDefault = option == ask.defaultOption
                         Button { store.answer(ask, with: option, in: tab) } label: {
                             Text(option).font(.system(size: 12, weight: isDefault ? .semibold : .medium))
