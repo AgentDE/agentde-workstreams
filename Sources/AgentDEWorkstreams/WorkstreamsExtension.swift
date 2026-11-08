@@ -24,6 +24,10 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
 
     public func stop() { model.saveTranscriptSnapshots() }
 
+    public func settingsView() -> AnyView? {
+        AnyView(Form { MemoryLimitSetting(store: model.workstreamStore) }.formStyle(.grouped))
+    }
+
     /// Usage: how long agents worked, and roughly what it cost, per workstream.
     public var widgets: [WidgetDefinition] {
         [WidgetDefinition(id: "usage", name: "Usage") { [model] in AnyView(UsageWidget().environment(model)) }]
@@ -96,5 +100,26 @@ private struct PinButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// How many Memory items a workstream holds before `add_memory` refuses new ones (0: no limit). Kept in the
+/// workstreams folder, so every agent's server sees a change at once.
+private struct MemoryLimitSetting: View {
+    let store: WorkstreamStore
+    @State private var limit = WorkstreamStore.Settings.defaultMemoryLimit
+
+    var body: some View {
+        Stepper(limit > 0 ? "Memory holds at most \(limit) items per workstream" : "Memory has no limit",
+                value: $limit, in: 0...200, step: 5)
+            .onAppear { limit = store.settings().memoryLimit ?? WorkstreamStore.Settings.defaultMemoryLimit }
+            .onChange(of: limit) { _, value in
+                var settings = store.settings()
+                guard value != (settings.memoryLimit ?? WorkstreamStore.Settings.defaultMemoryLimit) else { return }
+                settings.memoryLimit = value
+                try? store.saveSettings(settings)
+            }
+        Text("An agent adding past the limit is told to remove items first and keep the rest in a notes file.")
+            .font(.caption).foregroundStyle(.secondary)
     }
 }
