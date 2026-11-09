@@ -342,6 +342,23 @@ public final class WorkstreamsModel {
         }
     }
 
+    /// A fork's own workstream: a new one with a copy of the parent's overview, rules and memory (not its asks,
+    /// progress or messages, which are the parent's). Named after the fork's agent until renamed.
+    func forkWorkstream(from parentID: String, for tabID: UUID) {
+        guard let tab = host.tabInfo(tabID) else { return }
+        let parent = workstreams[parentID]
+        let id = UUID().uuidString
+        let folder = parent?.folder ?? tab.groupFolder
+        modifyWorkstream(id) { w in
+            w.folder = folder
+            w.overview = parent?.overview
+            w.rules = parent?.rules
+            w.memory = parent?.memory
+        }
+        DebugLog.log("tab \(tabID.uuidString.prefix(8)) forked workstream \(parentID.prefix(8)) into \(id.prefix(8))", "workstream")
+        switchWorkstream(of: tabID, to: id)
+    }
+
     func newWorkstream(for tabID: UUID) {
         guard let tab = host.tabInfo(tabID) else { return }
         let id = UUID().uuidString

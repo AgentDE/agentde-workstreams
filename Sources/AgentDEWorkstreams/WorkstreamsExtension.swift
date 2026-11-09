@@ -52,14 +52,20 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
         if !keepAgent { model.detachAgent(of: tab) }
     }
 
-    /// A fork joins the workstream of the agent it came from; any other background session gets a new one
-    /// (Claude records no parent for those).
+    /// A background session already in a workstream rejoins it. A fork (`/fork`) gets a workstream of its own,
+    /// starting with a copy of its parent's overview, rules and memory; any other gets a new, empty one.
     public func backgroundSessionOpened(_ tab: TabInfo, session: String?, forkParent: String?) {
-        if let session, let id = model.workstreamSessionIndex[session] {
+        if let session, let id = model.workstreamSessionIndex[session], forkParent == nil || id != model.workstreamSessionIndex[forkParent!] {
             model.setWorkstreamID(id, of: tab.id)
         } else if let forkParent, let id = model.workstreamSessionIndex[forkParent] {
-            model.setWorkstreamID(id, of: tab.id)
+            model.forkWorkstream(from: id, for: tab.id)
         }
+    }
+
+    /// Right-click → Fork Session: the same as `/fork`.
+    public func tabForked(_ tab: TabInfo, from parent: TabInfo) {
+        guard let id = model.workstreamID(of: parent) else { return }
+        model.forkWorkstream(from: id, for: tab.id)
     }
 
     public func wantsAttention(_ tab: TabInfo) -> Bool { host != nil && !model.openAsks(for: tab).isEmpty }
