@@ -4,7 +4,7 @@ An AgentDE extension that shows each agent's **workstream** beside its chat. A w
 
 | Adds | What |
 |---|---|
-| Workstream panel | The Workstream tab of every agent tab's side panel: a picker (switch, new, rename), then Waiting on you, FYI, Overview, Tickets, Rules, Agents, Messages, Memory, Progress, Plan, Scheduled, Files, Artifacts and Stats |
+| Workstream panel | The Workstream tab of every agent tab's side panel, the open session's own workstream: Waiting on you, FYI, Overview, Tickets, Rules, Agents, Messages, Memory, Progress, Plan, Scheduled, Files, Artifacts and Stats |
 | Tab environment | `WORKSTREAM_TAB_ID` and `WORKSTREAM_ID` in each tab, so the MCP server knows which workstream an agent belongs to (plus `WORKSTREAM_DIR` when it isn't the default) |
 | New → Workstream… | In a group's right-click menu: names a piece of work, makes a git worktree on a new branch of that name from the remote's default branch (`origin/HEAD`; else what's checked out), in `<repo>-worktrees/<name>` beside the repo, and opens a Claude tab there on a new workstream |
 | ◇ Pin | In the viewer's header: pins the file shown to the tab's workstream |

@@ -14,7 +14,6 @@ struct WorkstreamPanel: View {
         // Refreshes the "updated" times and countdowns once a minute.
         TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: 0) {
-                WorkstreamPicker(tab: tab)
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 0) {
                         sections(now: context.date)
@@ -228,40 +227,6 @@ struct WorkstreamPanel: View {
 
 /// The active workstream's name; its menu switches this agent to another of the group's workstreams,
 /// starts a new one, or renames this one.
-private struct WorkstreamPicker: View {
-    let tab: TabInfo
-    @Environment(WorkstreamsModel.self) private var store
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        let current = store.workstream(for: tab)
-        Menu {
-            ForEach(store.workstreams(forGroupOf: tab), id: \.id) { workstream in
-                Button { store.switchWorkstream(of: tab.id, to: workstream.id) } label: {
-                    if workstream.id == store.workstreamID(of: tab) { Label(store.workstreamName(workstream), systemImage: "checkmark") }
-                    else { Text(store.workstreamName(workstream)) }
-                }
-            }
-            Divider()
-            Button("New Workstream") { store.newWorkstream(for: tab.id) }
-            if let id = store.workstreamID(of: tab) { Button("Rename…") { store.renameWorkstream(id) } }
-        } label: {
-            HStack(spacing: 5) {
-                Text(store.workstreamName(current, tab: tab)).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(theme.muted)
-            }
-            .foregroundStyle(theme.text)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .padding(.horizontal, 12)
-        .frame(height: 34)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(alignment: .bottom) { Rectangle().fill(theme.border).frame(height: 0.5) }
-    }
-}
-
 private struct AgentRow: View {
     let agent: TabInfo
     let current: Bool
@@ -531,6 +496,7 @@ private struct AskCard: View {
     @Environment(\.theme) private var theme
 
     @State private var hovering = false
+    @State private var reply = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -555,6 +521,19 @@ private struct AskCard: View {
                     }
                 }
             }
+            // An answer the buttons don't cover: typed here, sent like a button's (with the question).
+            TextField("Or type a reply", text: $reply)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(RoundedRectangle(cornerRadius: 6).fill(theme.text.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.needsYou.opacity(0.3), lineWidth: 0.5))
+                .onSubmit {
+                    let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    store.answer(ask, with: text, in: tab)
+                    reply = ""
+                }
             if let meta {
                 Text(meta).font(.system(size: 11)).monospacedDigit().foregroundStyle(theme.muted)
             }
