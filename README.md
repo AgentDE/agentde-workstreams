@@ -1,6 +1,6 @@
 # agentde-workstreams
 
-An AgentDE extension that shows each agent's **workstream** beside its chat. A workstream is the shared record of a piece of work (overview, rules, memory, questions waiting on you, progress, files, tickets), kept current by the agents through the `workstream` MCP server from [workstream-mcp](../workstream-mcp).
+An AgentDE extension that shows each agent's **workstream** beside its chat. A workstream is the shared record of a piece of work (overview, rules, memory, questions waiting on you, progress, files, tickets), kept current by the agents through the `workstream` MCP server from [workstream-mcp](https://github.com/AgentDE/workstream-mcp).
 
 | Adds | What |
 |---|---|
@@ -14,15 +14,16 @@ An AgentDE extension that shows each agent's **workstream** beside its chat. A w
 
 Worktrees and branches are never removed for you: merge the branch, then `git worktree remove <folder>`. Tickets are tracker-neutral (`ENG-123`, `acme/app#12`, or a link); their live state shows when an extension provides a ticket provider for the tracker, such as `agentde-linear`.
 
-Panel sections, the file format and the server's tools: [workstream-mcp/docs/WORKSTREAMS.md](../workstream-mcp/docs/WORKSTREAMS.md).
+Panel sections, the file format and the server's tools: [workstream-mcp/docs/WORKSTREAMS.md](https://github.com/AgentDE/workstream-mcp/blob/main/docs/WORKSTREAMS.md).
 
 ## Include it
 
 It's in AgentDE's default `extensions.json`, so building AgentDE clones it (and `agentde-widgets` and `workstream-mcp`) beside `agentde/`, with the server as a helper bundled into the app:
 
 ```json
-{ "package": "../agentde-workstreams", "product": "AgentDEWorkstreams", "create": "WorkstreamsExtension()",
-  "helpers": [{ "package": "../workstream-mcp", "product": "workstream-mcp" }] }
+{ "package": "../agentde-workstreams", "repo": "https://github.com/AgentDE/agentde-workstreams",
+  "product": "AgentDEWorkstreams", "create": "WorkstreamsExtension()",
+  "helpers": [{ "package": "../workstream-mcp", "repo": "https://github.com/AgentDE/workstream-mcp", "product": "workstream-mcp" }] }
 ```
 
 Then register the server once for Claude Code and Codex, from `agentde/`:
@@ -34,7 +35,13 @@ make register-workstream YES=1    # makes them
 
 ## Settings
 
-None of its own. Layout → Side Panel (⌥⌘I) hides the panel for a tab. Workstream files are in `~/.config/workstreams/`.
+Settings → Extensions → Workstreams:
+
+| Setting | Default |
+|---|---|
+| Memory limit: how many Memory items a workstream holds before `add_memory` refuses new ones | 25 per workstream; 0 means no limit |
+
+Layout → Side Panel (⌥⌘I) hides the panel for a tab. Workstream files are in `~/.config/workstreams/`.
 
 ## License
 
