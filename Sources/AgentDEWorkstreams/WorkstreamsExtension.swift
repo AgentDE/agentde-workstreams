@@ -64,9 +64,10 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
 
     public func wantsAttention(_ tab: TabInfo) -> Bool { host != nil && !model.openAsks(for: tab).isEmpty }
 
-    public func panel(for tab: TabInfo) -> AnyView? {
-        guard host != nil, tab.isAgent else { return nil }
-        return AnyView(WorkstreamPanel(tab: tab).environment(model))
+    public func sidePanelTabs(for tab: TabInfo) -> [SidePanelTab] {
+        guard host != nil, tab.isAgent else { return [] }
+        return [SidePanelTab(id: "workstream", title: "Workstream", symbol: "list.bullet.rectangle",
+                             view: AnyView(WorkstreamPanel(tab: tab).environment(model)))]
     }
 
     public func viewerAccessory(for tab: TabInfo, item: String) -> AnyView? {

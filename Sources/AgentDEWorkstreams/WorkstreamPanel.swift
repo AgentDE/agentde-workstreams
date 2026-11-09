@@ -24,8 +24,6 @@ struct WorkstreamPanel: View {
                 .scrollIndicators(.automatic)
             }
         }
-        .background(theme.sidebar.opacity(0.55))
-        .overlay(alignment: .leading) { Rectangle().fill(theme.border).frame(width: 0.5) }
     }
 
     @ViewBuilder private func sections(now: Date) -> some View {
