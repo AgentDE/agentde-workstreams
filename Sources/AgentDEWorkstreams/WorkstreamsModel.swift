@@ -675,6 +675,11 @@ public final class WorkstreamsModel {
         modifyWorkstream(id) { $0.togglePinned(path, by: "you") }
     }
 
+    func togglePinnedArtifact(_ artifact: TranscriptFacts.Artifact, in tab: TabInfo) {
+        guard let id = workstreamID(of: tab) else { return }
+        modifyWorkstream(id) { $0.togglePinnedArtifact(artifact) }
+    }
+
     /// Applies a change now (so the panel updates at once) and writes it under the workstream's lock.
     func modifyWorkstream(_ id: String, _ change: @escaping (inout Workstream) -> Void) {
         var local = workstreams[id] ?? Workstream(id: id)

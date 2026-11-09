@@ -108,16 +108,7 @@ struct WorkstreamPanel: View {
         planSections(agents: agents, now: now)
         scheduledSection(workstream: workstream, agents: agents, now: now)
         filesSection(workstream: workstream, activity: activity, now: now)
-        let artifacts = activity.artifacts()
-        if !artifacts.isEmpty {
-            PanelSection(key: "artifacts", title: "Artifacts", count: "\(artifacts.count)", updated: artifacts.first?.artifact.at, now: now, tab: tab) {
-                VStack(alignment: .leading, spacing: 1) {
-                    ForEach(artifacts, id: \.artifact.url) { row in
-                        ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now)
-                    }
-                }
-            }
-        }
+        artifactsSection(workstream: workstream, activity: activity, agents: agents, now: now)
         StatsSection(tab: tab, agents: agents, now: now)
     }
 
@@ -156,6 +147,33 @@ struct WorkstreamPanel: View {
                     if !busy.isEmpty {
                         FilesSubheading(title: "High activity").padding(.top, pinned.isEmpty && recent.isEmpty ? 0 : 6)
                         ForEach(Array(busy), id: \.path) { file in ActivityFileRow(path: file.path, detail: "\(file.count)", tab: tab) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Artifacts you pinned, then the ones the attached agents made or linked, newest first. Pinning is yours
+    /// alone: right-click an artifact (or ◇ Pin in the viewer while it's open).
+    @ViewBuilder private func artifactsSection(workstream: Workstream?, activity: WorkstreamActivity, agents: [TabInfo], now: Date) -> some View {
+        let pinned = workstream?.pinnedArtifacts?.items ?? []
+        let pinnedURLs = Set(pinned.map(\.url))
+        let recent = activity.artifacts().filter { !pinnedURLs.contains($0.artifact.url) }
+        if !pinned.isEmpty || !recent.isEmpty {
+            let updated = [workstream?.pinnedArtifacts?.updated, recent.first?.artifact.at].compactMap { $0 }.max()
+            PanelSection(key: "artifacts", title: "Artifacts", count: "\(pinned.count + recent.count)", updated: updated, now: now, tab: tab) {
+                VStack(alignment: .leading, spacing: 1) {
+                    if !pinned.isEmpty {
+                        FilesSubheading(title: "Pinned")
+                        ForEach(pinned, id: \.url) { artifact in
+                            ArtifactRow(row: WorkstreamActivity.AgentArtifact(agent: "", artifact: artifact), tab: tab, agent: nil, now: now, pinned: true)
+                        }
+                    }
+                    if !recent.isEmpty {
+                        if !pinned.isEmpty { FilesSubheading(title: "Recent").padding(.top, 6) }
+                        ForEach(recent, id: \.artifact.url) { row in
+                            ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now)
+                        }
                     }
                 }
             }
@@ -821,6 +839,7 @@ private struct ArtifactRow: View {
     let tab: TabInfo
     let agent: String?
     let now: Date
+    var pinned = false
     @Environment(WorkstreamsModel.self) private var store
     @Environment(\.theme) private var theme
     @State private var hovering = false
@@ -847,6 +866,10 @@ private struct ArtifactRow: View {
         .onHover { hovering = $0 }
         .help(url.hasPrefix("/") ? url.abbreviatingHome : url)
         .contextMenu {
+            Button(pinned ? "Unpin" : "Pin") {
+                store.togglePinnedArtifact(TranscriptFacts.Artifact(url: url, title: title, at: row.artifact.at), in: tab)
+            }
+            Divider()
             Button("Copy Title") { copy(title) }
             Button(url.hasPrefix("/") ? "Copy Path" : "Copy Link") { copy(url) }
         }

@@ -70,7 +70,7 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
     }
 
     public func viewerAccessory(for tab: TabInfo, item: String) -> AnyView? {
-        guard host != nil, !item.hasPrefix("http"), model.workstreamID(of: tab) != nil else { return nil }
+        guard host != nil, model.workstreamID(of: tab) != nil else { return nil }
         return AnyView(PinButton(tab: tab, item: item).environment(model))
     }
 
@@ -84,7 +84,7 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
     }
 }
 
-/// ◇ Pin in the viewer's header: pins the file shown to the tab's workstream.
+/// ◇ Pin in the viewer's header: pins the file shown to the workstream's Files, or a page or link to its Artifacts.
 private struct PinButton: View {
     let tab: TabInfo
     let item: String
@@ -92,8 +92,18 @@ private struct PinButton: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let pinned = model.workstream(for: tab)?.files?.items.contains { $0.path == item } ?? false
-        Button { model.togglePinned(item, in: tab) } label: {
+        let workstream = model.workstream(for: tab)
+        let isLink = item.hasPrefix("http")
+        let pinned = isLink ? workstream?.pinnedArtifacts?.items.contains { $0.url == item } ?? false
+                            : workstream?.files?.items.contains { $0.path == item } ?? false
+        Button {
+            if isLink {
+                let known = model.activity(of: workstream).artifacts(100).first { $0.artifact.url == item }?.artifact
+                model.togglePinnedArtifact(known ?? TranscriptFacts.Artifact(url: item, title: ArtifactLinks.title(for: item), at: Date()), in: tab)
+            } else {
+                model.togglePinned(item, in: tab)
+            }
+        } label: {
             Text(pinned ? "◆ Pinned" : "◇ Pin").font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(pinned ? Color(hex: 0x3DF2A6) : theme.secondary)
                 .padding(.horizontal, 6).frame(height: 22)
