@@ -31,6 +31,11 @@ public final class WorkstreamsModel {
         return WorkstreamStore()
     }()
     @ObservationIgnored let workstreamQueue = DispatchQueue(label: "agentde.workstreams", qos: .utility)
+    /// Per workstream: why its changes aren't saved, until they all are (shown at the top of its panel).
+    var writeErrors: [String: String] = [:]
+    /// Per workstream: changes made here that haven't reached its file yet, oldest first. Only touched on
+    /// `workstreamQueue`.
+    @ObservationIgnored var unsavedChanges: [String: [(inout Workstream) -> Void]] = [:]
     /// Reads transcripts (long ones can take a while the first time), apart from the workstream files.
     @ObservationIgnored let transcriptQueue = DispatchQueue(label: "agentde.transcripts", qos: .utility)
     @ObservationIgnored var workstreamWatcher: FileWatcher?
@@ -257,19 +262,25 @@ public final class WorkstreamsModel {
     /// session counts as ended after three polls without it.
     func updateLiveSessions(_ live: Set<String>) {
         guard workstreamsLoaded else { return }
+        // Each asking Claude session once per poll, however many asks it has open, and in which workstreams.
+        var asking: [String: Set<String>] = [:]
         for workstream in workstreams.values {
             for ask in workstream.openAsks {
                 guard let session = ask.agent,
                       workstream.agents.first(where: { $0.session == session })?.kind ?? "claude" == "claude" else { continue }
-                if live.contains(session) {
-                    missingAskSessions[session] = nil
-                } else {
-                    missingAskSessions[session, default: 0] += 1
-                    if missingAskSessions[session] == 3 {
-                        DebugLog.log("session \(session.prefix(8)) ended; clearing its asks in \(workstream.id.prefix(8))", "workstream")
-                        modifyWorkstream(workstream.id) { $0.clearAsks(of: session) }
-                    }
-                }
+                asking[session, default: []].insert(workstream.id)
+            }
+        }
+        for (session, workstreamIDs) in asking {
+            if live.contains(session) {
+                missingAskSessions[session] = nil
+                continue
+            }
+            missingAskSessions[session, default: 0] += 1
+            guard missingAskSessions[session] == 3 else { continue }
+            for id in workstreamIDs {
+                DebugLog.log("session \(session.prefix(8)) ended; clearing its asks in \(id.prefix(8))", "workstream")
+                modifyWorkstream(id) { $0.clearAsks(of: session) }
             }
         }
     }
@@ -601,11 +612,26 @@ public final class WorkstreamsModel {
     // MARK: Changes from the panel
 
     /// Answers an ask: types the answer, with its question, into the asking agent's chat, then removes the ask.
+    /// Only the agent that asked gets it; when it isn't running in a tab, or typing fails, the ask stays open and
+    /// says why, rather than landing in another conversation or vanishing.
     func answer(_ ask: Workstream.Ask, with option: String, in tab: TabInfo) {
-        guard let id = workstreamID(of: tab) else { return }
-        let target = tabs.first { ask.agent != nil && $0.agentSession == ask.agent } ?? tab
-        host.type(ask.reply(option) + "\r", into: target.id)
+        guard let id = workstreamID(of: tab), let target = recipient(of: ask, viewing: tab) else { return }
+        guard host.type(ask.reply(option) + "\r", into: target.id) else { return notDelivered(ask, to: target) }
         modifyWorkstream(id) { $0.resolve(ask: ask.id, by: "you", answer: option) }
+    }
+
+    /// The tab whose agent asked: the one running that session. An ask from before agents were recorded goes to
+    /// the tab you're looking at.
+    private func recipient(of ask: Workstream.Ask, viewing tab: TabInfo) -> TabInfo? {
+        guard let session = ask.agent else { return tab }
+        if let target = tabs.first(where: { $0.agentSession == session }) { return target }
+        host.showProblem("The agent that asked isn't open",
+                         "Resume its session from Recent to answer it there, or dismiss the question. Nothing was sent.")
+        return nil
+    }
+
+    private func notDelivered(_ ask: Workstream.Ask, to tab: TabInfo) {
+        host.showProblem("Couldn't reach \(tab.title)", "Its terminal isn't running yet. Open the tab and answer again; the question is still open.")
     }
 
     /// Links a ticket (a key like ENG-123, owner/repo#12, or a link) to the tab's workstream; false if it isn't one.
@@ -656,8 +682,12 @@ public final class WorkstreamsModel {
     /// Dismisses an ask without answering it, and tells the asking agent so in its chat, as an answer would.
     func dismissAsk(_ ask: Workstream.Ask, in tab: TabInfo) {
         guard let id = workstreamID(of: tab) else { return }
-        let target = tabs.first { ask.agent != nil && $0.agentSession == ask.agent } ?? tab
-        host.type(ask.dismissal + "\r", into: target.id)
+        // A dismissal needs no reply: tell the asking agent when it's running, and close the ask either way.
+        if let session = ask.agent, let target = tabs.first(where: { $0.agentSession == session }) {
+            host.type(ask.dismissal + "\r", into: target.id)
+        } else if ask.agent == nil {
+            host.type(ask.dismissal + "\r", into: tab.id)
+        }
         modifyWorkstream(id) { $0.resolve(ask: ask.id, by: "you", answer: nil) }
     }
 
@@ -703,10 +733,25 @@ public final class WorkstreamsModel {
         change(&local)
         workstreams[id] = local
         let store = workstreamStore
-        workstreamQueue.async {
-            do { try store.update(id, change) } catch {
+        // Changes that failed to save are kept and written again, before this one, with the next change to the
+        // same workstream; its warning clears once they're all on disk. The list lives on the serial write
+        // queue, so each write applies exactly the changes not yet saved, each once.
+        workstreamQueue.async { [weak self] in
+            guard let self else { return }
+            let changes = (self.unsavedChanges[id] ?? []) + [change]
+            do {
+                try store.update(id) { w in for change in changes { change(&w) } }
+                self.unsavedChanges[id] = nil
+                DispatchQueue.main.async { self.writeErrors[id] = nil }
+            } catch {
+                self.unsavedChanges[id] = changes
                 DebugLog.log("couldn't update workstream \(id.prefix(8)): \(error)", "workstream")
+                // The panel already shows the change; say it isn't saved, so nobody trusts it after a restart.
+                DispatchQueue.main.async { self.writeErrors[id] = error.localizedDescription }
             }
         }
     }
+
+    /// The warning for a tab's workstream while changes to it aren't saved.
+    func writeError(for tab: TabInfo) -> String? { workstreamID(of: tab).flatMap { writeErrors[$0] } }
 }

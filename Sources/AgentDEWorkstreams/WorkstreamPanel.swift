@@ -1,3 +1,4 @@
+import AppKit
 import AgentDEKit
 import SwiftUI
 import WorkstreamKit
@@ -14,6 +15,12 @@ struct WorkstreamPanel: View {
         // Refreshes the "updated" times and countdowns once a minute.
         TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: 0) {
+                if let error = store.writeError(for: tab) {
+                    Label("Changes here aren't being saved: \(error)", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 11.5)).foregroundStyle(Color(hex: 0xE24B4A))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 ScrollView(.vertical) {
                     VStack(alignment: .leading, spacing: 0) {
                         sections(now: context.date)
@@ -47,8 +54,20 @@ struct WorkstreamPanel: View {
         }
         if let overview = workstream?.overview {
             PanelSection(key: "overview", title: "Overview", updated: overview.updated, now: now, tab: tab) {
-                Text(overview.text).font(.system(size: 12.5)).foregroundStyle(theme.secondary)
-                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                // "Goal: …" and "Status: …" lines get their label in the text color; older free text shows as is.
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(overview.text.split(separator: "\n", omittingEmptySubsequences: true).enumerated()), id: \.offset) { _, line in
+                        let parts = line.split(separator: ":", maxSplits: 1)
+                        if parts.count == 2, ["Goal", "Status"].contains(String(parts[0])) {
+                            (Text(parts[0] + ":").fontWeight(.semibold).foregroundColor(theme.text) + Text(parts[1]).foregroundColor(theme.secondary))
+                                .font(.system(size: 12.5))
+                                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        } else {
+                            Text(line).font(.system(size: 12.5)).foregroundStyle(theme.secondary)
+                                .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                        }
+                    }
+                }
             }
         }
         let tickets = workstream?.tickets?.items ?? []
@@ -504,7 +523,7 @@ private struct AskCard: View {
                 Text(ask.question).font(.system(size: 12.5)).foregroundStyle(theme.text)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 Spacer(minLength: 4)
-                if hovering { DismissButton(help: "Dismiss, and tell the agent no answer is needed") { store.dismissAsk(ask, in: tab) } }
+                if hovering || NSWorkspace.shared.isVoiceOverEnabled { DismissButton(help: "Dismiss, and tell the agent no answer is needed") { store.dismissAsk(ask, in: tab) } }
             }
             if !ask.answers.isEmpty {
                 FlowRow(spacing: 6) {
@@ -576,7 +595,7 @@ private struct ProgressRowView: View {
                 Text(row.label).font(.system(size: 12, weight: .medium)).foregroundStyle(theme.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
-                if hovering { DismissButton(help: "Remove") { store.removeProgressRow(row, in: tab) } }
+                if hovering || NSWorkspace.shared.isVoiceOverEnabled { DismissButton(help: "Remove") { store.removeProgressRow(row, in: tab) } }
             }
             VStack(alignment: .leading, spacing: 4) {
                 if let value = row.value { ProgressBar(value: value) }
@@ -637,7 +656,7 @@ private struct MemoryRow: View {
                 + Text(item.text)
                 + (item.at.map { Text("  " + WorkstreamPanel.memoryDate($0, now: now)).foregroundColor(theme.muted) } ?? Text(""))
             Spacer(minLength: 4)
-            if hovering { DismissButton(help: "Remove") { store.removeMemory(item.id, in: tab) } }
+            if hovering || NSWorkspace.shared.isVoiceOverEnabled { DismissButton(help: "Remove") { store.removeMemory(item.id, in: tab) } }
         }
         .fixedSize(horizontal: false, vertical: true)
         .font(.system(size: 12.5)).foregroundStyle(theme.secondary).textSelection(.enabled)
