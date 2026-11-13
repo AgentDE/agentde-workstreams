@@ -65,7 +65,7 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
     /// Right-click → Fork Session: the same as `/fork`.
     public func tabForked(_ tab: TabInfo, from parent: TabInfo) {
         guard let id = model.workstreamID(of: parent) else { return }
-        model.forkWorkstream(from: id, for: tab.id)
+        model.forkWorkstream(from: id, for: tab.id, name: tab.title)
     }
 
     public func wantsAttention(_ tab: TabInfo) -> Bool { host != nil && !model.openAsks(for: tab).isEmpty }

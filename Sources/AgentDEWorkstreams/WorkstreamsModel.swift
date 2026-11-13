@@ -354,14 +354,15 @@ public final class WorkstreamsModel {
     }
 
     /// A fork's own workstream: a new one with a copy of the parent's overview, rules and memory (not its asks,
-    /// progress or messages, which are the parent's). Named after the fork's agent until renamed.
-    func forkWorkstream(from parentID: String, for tabID: UUID) {
+    /// progress or messages, which are the parent's). Named `name` (the fork's), else after its agent.
+    func forkWorkstream(from parentID: String, for tabID: UUID, name: String? = nil) {
         guard let tab = host.tabInfo(tabID) else { return }
         let parent = workstreams[parentID]
         let id = UUID().uuidString
         let folder = parent?.folder ?? tab.groupFolder
         modifyWorkstream(id) { w in
             w.folder = folder
+            if let name, !name.isEmpty { w.name = name }
             w.overview = parent?.overview
             w.rules = parent?.rules
             w.memory = parent?.memory
