@@ -138,31 +138,26 @@ struct WorkstreamPanel: View {
         agents.first { $0.agentSession == session }.map { $0.title }
     }
 
-    /// Pinned files (yours and the agent's, with notes), then the ones the attached agents edited most recently,
-    /// then the ones they touched most.
+    /// Pinned files (yours and the agent's, with notes), then every file the attached agents read or edited,
+    /// sorted and filtered as you choose (most recent first by default).
     @ViewBuilder private func filesSection(workstream: Workstream?, activity: WorkstreamActivity, now: Date) -> some View {
         let pinned = workstream?.files?.items ?? []
         let shown = Set(pinned.map(\.path))
-        let recent = activity.recentFiles(12).filter { !shown.contains($0.path) && FileManager.default.fileExists(atPath: $0.path) }.prefix(8)
-        let listed = shown.union(recent.map(\.path))
-        let busy = activity.highActivity(10).filter { !listed.contains($0.path) && FileManager.default.fileExists(atPath: $0.path) }.prefix(5)
-        if !pinned.isEmpty || !recent.isEmpty || !busy.isEmpty {
-            let updated = [workstream?.files?.updated, recent.first?.lastEdit].compactMap { $0 }.max()
+        let files = activity.allFiles().filter { !shown.contains($0.path) && FileManager.default.fileExists(atPath: $0.path) }
+        if !pinned.isEmpty || !files.isEmpty {
+            let updated = [workstream?.files?.updated, files.compactMap(\.lastEdit).max()].compactMap { $0 }.max()
             PanelSection(key: "files", title: "Files", updated: updated, now: now, tab: tab) {
                 VStack(alignment: .leading, spacing: 1) {
                     if !pinned.isEmpty {
                         FilesSubheading(title: "Pinned")
                         ForEach(pinned, id: \.path) { item in PinnedFileRow(item: item, tab: tab) }
                     }
-                    if !recent.isEmpty {
-                        FilesSubheading(title: "Recent").padding(.top, pinned.isEmpty ? 0 : 6)
-                        ForEach(Array(recent), id: \.path) { file in
-                            ActivityFileRow(path: file.path, detail: PanelSectionTime.short(file.lastEdit ?? now, now: now), tab: tab)
+                    if !files.isEmpty {
+                        SortedList(files: true, heading: pinned.isEmpty ? nil : "Activity", now: now,
+                                   items: files.map { ListItem(key: $0.path, name: ($0.path as NSString).lastPathComponent,
+                                                               date: $0.lastEdit ?? $0.lastTouch, count: $0.count) }) { item, detail in
+                            ActivityFileRow(path: item.key, detail: detail, tab: tab)
                         }
-                    }
-                    if !busy.isEmpty {
-                        FilesSubheading(title: "High activity").padding(.top, pinned.isEmpty && recent.isEmpty ? 0 : 6)
-                        ForEach(Array(busy), id: \.path) { file in ActivityFileRow(path: file.path, detail: "\(file.count)", tab: tab) }
                     }
                 }
             }
@@ -174,7 +169,7 @@ struct WorkstreamPanel: View {
     @ViewBuilder private func artifactsSection(workstream: Workstream?, activity: WorkstreamActivity, agents: [TabInfo], now: Date) -> some View {
         let pinned = workstream?.pinnedArtifacts?.items ?? []
         let pinnedURLs = Set(pinned.map(\.url))
-        let recent = activity.artifacts().filter { !pinnedURLs.contains($0.artifact.url) }
+        let recent = activity.artifacts(500).filter { !pinnedURLs.contains($0.artifact.url) }
         if !pinned.isEmpty || !recent.isEmpty {
             let updated = [workstream?.pinnedArtifacts?.updated, recent.first?.artifact.at].compactMap { $0 }.max()
             PanelSection(key: "artifacts", title: "Artifacts", count: "\(pinned.count + recent.count)", updated: updated, now: now, tab: tab) {
@@ -186,9 +181,16 @@ struct WorkstreamPanel: View {
                         }
                     }
                     if !recent.isEmpty {
-                        if !pinned.isEmpty { FilesSubheading(title: "Recent").padding(.top, 6) }
-                        ForEach(recent, id: \.artifact.url) { row in
-                            ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now)
+                        let byURL = Dictionary(recent.map { ($0.artifact.url, $0) }, uniquingKeysWith: { a, _ in a })
+                        let mentions = activity.artifactMentions()
+                        SortedList(files: false, heading: pinned.isEmpty ? nil : "Recent", now: now,
+                                   items: recent.map { row in
+                                       ListItem(key: row.artifact.url, name: row.artifact.title ?? (row.artifact.url as NSString).lastPathComponent,
+                                                date: row.artifact.at, count: mentions[row.artifact.url] ?? 1)
+                                   }) { item, _ in
+                            if let row = byURL[item.key] {
+                                ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now)
+                            }
                         }
                     }
                 }
@@ -977,5 +979,89 @@ enum Stat {
         if s < 3600 { return "\(s / 60)m" }
         if s < 86_400 { return "\(s / 3600)h \(s % 3600 / 60)m" }
         return "\(s / 86_400)d \(s % 86_400 / 3600)h"
+    }
+}
+
+/// A Files or Artifacts list you can sort (most recent, most used or mentioned, biggest, name) and filter (by name
+/// or path, so `.pptx` works as a type filter): the first 10, then a fold for the rest. The controls show once
+/// there are 5 or more; the sort is remembered per list.
+private struct SortedList<Row: View>: View {
+    let files: Bool
+    let heading: String?
+    let now: Date
+    let items: [ListItem]
+    @ViewBuilder let row: (ListItem, String) -> Row
+    @AppStorage private var sortRaw: String
+    @State private var filter = ""
+    @State private var showAll = false
+    @Environment(\.theme) private var theme
+
+    init(files: Bool, heading: String?, now: Date, items: [ListItem], @ViewBuilder row: @escaping (ListItem, String) -> Row) {
+        self.files = files
+        self.heading = heading
+        self.now = now
+        self.items = items
+        self.row = row
+        _sortRaw = AppStorage(wrappedValue: ListSort.recent.rawValue, files ? "workstreams.filesSort" : "workstreams.artifactsSort")
+    }
+
+    var body: some View {
+        let sort = ListSort(rawValue: sortRaw) ?? .recent
+        let sized = sort == .biggest ? items.map { item in var item = item; item.size = ListOrder.size(of: item.key); return item } : items
+        let ordered = ListOrder.arrange(sized, sort: sort, filter: filter)
+        let controls = items.count >= 5
+        VStack(alignment: .leading, spacing: 1) {
+            if heading != nil || controls {
+                HStack(spacing: 6) {
+                    if let heading { FilesSubheading(title: heading) }
+                    if controls {
+                        Image(systemName: "line.3.horizontal.decrease").font(.system(size: 9.5)).foregroundStyle(theme.muted)
+                        TextField("Filter", text: $filter)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .onKeyPress(.escape) { filter = ""; return .handled }
+                        Menu {
+                            ForEach(ListSort.allCases, id: \.self) { option in
+                                Button((option == sort ? "✓ " : "    ") + option.label(files: files)) { sortRaw = option.rawValue }
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Text(sort.label(files: files)).font(.system(size: 10.5))
+                                Image(systemName: "chevron.down").font(.system(size: 7, weight: .semibold))
+                            }
+                        }
+                        .menuStyle(.button)
+                        .buttonStyle(.plain)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .foregroundStyle(theme.muted)
+                    }
+                }
+                .padding(.top, heading == nil ? 0 : 6)
+                .padding(.bottom, 2)
+            }
+            ForEach(Array((showAll ? ordered : Array(ordered.prefix(10))).enumerated()), id: \.element.key) { _, item in
+                row(item, detail(item, sort))
+            }
+            if ordered.isEmpty, !filter.isEmpty {
+                Text("Nothing matches").font(.system(size: 11)).foregroundStyle(theme.muted).padding(.vertical, 2)
+            }
+            if ordered.count > 10 {
+                Button(showAll ? "Show fewer" : "\(ordered.count - 10) more") { withAnimation(.snappy(duration: 0.2)) { showAll.toggle() } }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(theme.muted)
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    /// What the row shows on its right: the time, the count, or the size, after the sort.
+    private func detail(_ item: ListItem, _ sort: ListSort) -> String {
+        switch sort {
+        case .used: "\(item.count)"
+        case .biggest: item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
+        case .recent, .name: item.date.map { PanelSectionTime.short($0, now: now) } ?? ""
+        }
     }
 }
