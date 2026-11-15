@@ -12,6 +12,16 @@ struct ListOrderTests {
          ListItem(key: "https://example.com/report", name: "Report", date: now.addingTimeInterval(-30), count: 1, size: nil)]
     }
 
+    /// Most opened goes by your opens; Mix by opens, then use, then recency.
+    @Test func openedAndMix() {
+        var list = items
+        list[1].opened = 3   // notes.md
+        list[0].opened = 3   // deck.pptx, used more
+        list[3].opened = 1   // Report
+        #expect(ListOrder.arrange(list, sort: .opened, filter: "").map(\.name) == ["notes.md", "deck.pptx", "Report", "main.swift"])
+        #expect(ListOrder.arrange(list, sort: .mix, filter: "").map(\.name) == ["deck.pptx", "notes.md", "Report", "main.swift"])
+    }
+
     @Test func sorts() {
         #expect(ListOrder.arrange(items, sort: .recent, filter: "").map(\.name) == ["notes.md", "Report", "deck.pptx", "main.swift"])
         #expect(ListOrder.arrange(items, sort: .used, filter: "").map(\.name) == ["main.swift", "deck.pptx", "notes.md", "Report"])

@@ -155,7 +155,8 @@ struct WorkstreamPanel: View {
                     if !files.isEmpty {
                         SortedList(files: true, heading: pinned.isEmpty ? nil : "Activity", now: now,
                                    items: files.map { ListItem(key: $0.path, name: ($0.path as NSString).lastPathComponent,
-                                                               date: $0.lastEdit ?? $0.lastTouch, count: $0.count) }) { item, detail in
+                                                               date: $0.lastEdit ?? $0.lastTouch, count: $0.count,
+                                                               opened: store.host.viewerOpens($0.path)) }) { item, detail in
                             ActivityFileRow(path: item.key, detail: detail, tab: tab)
                         }
                     }
@@ -186,7 +187,8 @@ struct WorkstreamPanel: View {
                         SortedList(files: false, heading: pinned.isEmpty ? nil : "Recent", now: now,
                                    items: recent.map { row in
                                        ListItem(key: row.artifact.url, name: row.artifact.title ?? (row.artifact.url as NSString).lastPathComponent,
-                                                date: row.artifact.at, count: mentions[row.artifact.url] ?? 1)
+                                                date: row.artifact.at, count: mentions[row.artifact.url] ?? 1,
+                                                opened: store.host.viewerOpens(row.artifact.url))
                                    }) { item, _ in
                             if let row = byURL[item.key] {
                                 ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now)
@@ -1060,6 +1062,7 @@ private struct SortedList<Row: View>: View {
     private func detail(_ item: ListItem, _ sort: ListSort) -> String {
         switch sort {
         case .used: "\(item.count)"
+        case .opened, .mix: item.opened > 0 ? "\(item.opened)×" : (item.date.map { PanelSectionTime.short($0, now: now) } ?? "")
         case .biggest: item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
         case .recent, .name: item.date.map { PanelSectionTime.short($0, now: now) } ?? ""
         }

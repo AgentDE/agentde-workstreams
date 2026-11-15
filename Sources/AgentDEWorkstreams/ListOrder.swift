@@ -2,12 +2,15 @@ import Foundation
 
 /// How the panel's Files and Artifacts lists sort (the menu beside their filter).
 enum ListSort: String, CaseIterable {
-    case recent, used, biggest, name
+    case mix, recent, opened, used, biggest, name
 
     /// "Most used" for files (the agents' reads and edits), "Most mentioned" for artifacts (how often linked).
+    /// Mix: most opened by you, then most used or mentioned, then most recent.
     func label(files: Bool) -> String {
         switch self {
+        case .mix: "Mix"
         case .recent: "Most recent"
+        case .opened: "Most opened"
         case .used: files ? "Most used" : "Most mentioned"
         case .biggest: "Biggest"
         case .name: "Name"
@@ -22,6 +25,8 @@ struct ListItem: Equatable {
     var date: Date?
     var count: Int
     var size: Int64?
+    /// How often you opened it in a viewer.
+    var opened = 0
 }
 
 enum ListOrder {
@@ -40,6 +45,10 @@ enum ListOrder {
         return kept.sorted { a, b in
             switch sort {
             case .recent: return newer(a, b)
+            case .opened: return a.opened != b.opened ? a.opened > b.opened : newer(a, b)
+            case .mix:
+                if a.opened != b.opened { return a.opened > b.opened }
+                return a.count != b.count ? a.count > b.count : newer(a, b)
             case .used: return a.count != b.count ? a.count > b.count : newer(a, b)
             case .biggest: return (a.size ?? -1) != (b.size ?? -1) ? (a.size ?? -1) > (b.size ?? -1) : newer(a, b)
             case .name:
