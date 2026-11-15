@@ -49,6 +49,7 @@ public final class WorkstreamsModel {
     @ObservationIgnored var notedOverlaps: [String: Date] = [:]
     /// Status line input saved by the `workstream-mcp statusline` wrapper, read for Stats, cached by file date.
     @ObservationIgnored var statusLineCache: [String: (checked: Date, status: StatusLineFeed.Status?)] = [:]
+    @ObservationIgnored var rateLimitsCache: (checked: Date, status: StatusLineFeed.Status?)?
     /// Registry polls in a row each asking agent session has been missing for.
     @ObservationIgnored var missingAskSessions: [String: Int] = [:]
     /// Fires at the next ask deadline.
@@ -601,6 +602,15 @@ public final class WorkstreamsModel {
         if let cached = statusLineCache[session], now.timeIntervalSince(cached.checked) < 10 { return cached.status }
         let status = StatusLineFeed.read(session: session)
         statusLineCache[session] = (now, status)
+        return status
+    }
+
+    /// Claude's 5-hour and 7-day limits used, from the newest status line that reports them; checked at most
+    /// every 30 seconds.
+    func rateLimits(now: Date = Date()) -> StatusLineFeed.Status? {
+        if let cached = rateLimitsCache, now.timeIntervalSince(cached.checked) < 30 { return cached.status }
+        let status = StatusLineFeed.latestRateLimits()
+        rateLimitsCache = (now, status)
         return status
     }
 

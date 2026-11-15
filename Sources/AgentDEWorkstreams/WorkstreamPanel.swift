@@ -919,8 +919,9 @@ private struct StatsSection: View {
                      + (facts.compactions > 0 ? " · \(facts.compactions) compaction\(facts.compactions == 1 ? "" : "s")" : "")))
         var current: [String] = []
         if let percent = status?.contextUsedPercent { current.append("context \(Int(percent.rounded()))%") }
-        if let five = store.host.rateLimitsUsed.fiveHour { current.append("5h \(Int(five.rounded()))%") }
-        if let seven = store.host.rateLimitsUsed.sevenDay { current.append("7d \(Int(seven.rounded()))%") }
+        let limits = store.rateLimits(now: now)
+        if let five = limits?.fiveHourUsedPercent { current.append("5h \(Int(five.rounded()))%") }
+        if let seven = limits?.sevenDayUsedPercent { current.append("7d \(Int(seven.rounded()))%") }
         if !current.isEmpty { rows.append(("Now", current.joined(separator: " · "))) }
         let others = agents.filter { $0.id != tab.id }.compactMap { agent -> (TranscriptFacts, StatusLineFeed.Status?)? in
             guard let session = agent.agentSession, let facts = store.transcriptFacts[session] else { return nil }

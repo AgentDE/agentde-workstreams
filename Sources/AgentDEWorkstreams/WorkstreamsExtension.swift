@@ -28,6 +28,9 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
         AnyView(Form { MemoryLimitSetting(store: model.workstreamStore) }.formStyle(.grouped))
     }
 
+    /// Claude's 5-hour and 7-day limits used, from the status line.
+    public func statusBarItem() -> AnyView? { AnyView(RateLimitsItem(model: model)) }
+
     /// Usage: how long agents worked, and roughly what it cost, per workstream.
     public var widgets: [WidgetDefinition] {
         [WidgetDefinition(id: "usage", name: "Usage") { [model] in AnyView(UsageWidget().environment(model)) }]
