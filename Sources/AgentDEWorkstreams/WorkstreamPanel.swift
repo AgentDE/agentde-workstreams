@@ -781,7 +781,7 @@ private struct MessageRow: View {
                     Spacer(minLength: 4)
                     Text(PanelSectionTime.short(row.message.at, now: now)).font(.system(size: 11)).monospacedDigit().foregroundStyle(theme.muted)
                 }
-                Text(expanded ? row.message.text : firstLine)
+                Text(expanded ? row.message.readable : firstLine)
                     .font(.system(size: 12.5)).foregroundStyle(theme.secondary)
                     .lineLimit(expanded ? nil : 1)
                     .fixedSize(horizontal: false, vertical: expanded)
@@ -795,7 +795,7 @@ private struct MessageRow: View {
     }
 
     private var firstLine: String {
-        row.message.text.split(whereSeparator: \.isNewline).first.map(String.init) ?? row.message.text
+        row.message.readable.split(whereSeparator: \.isNewline).first.map(String.init) ?? row.message.readable
     }
 }
 
