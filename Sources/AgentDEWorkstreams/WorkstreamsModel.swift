@@ -236,7 +236,7 @@ public final class WorkstreamsModel {
                 guard !pendingSessionAttachments.contains(key) else { continue }
                 pendingSessionAttachments.insert(key)
                 let store = workstreamStore
-                let kind = tab.kind == .codex ? "codex" : "claude"
+                let kind = tab.agentID == "codex" ? "codex" : "claude"
                 let tabID = tab.id.uuidString
                 let folder = tab.groupFolder
                 workstreamQueue.async { [weak self] in
@@ -344,9 +344,9 @@ public final class WorkstreamsModel {
         for (other, workstream) in workstreams where other != id && workstream.agents.contains(where: { $0.session == session }) {
             workstreams[other]?.detach(session: session, clearAsks: false)
         }
-        workstreams[id, default: Workstream(id: id, folder: folder)].attach(session: session, kind: tab.kind == .codex ? "codex" : "claude", tab: tab.id.uuidString)
+        workstreams[id, default: Workstream(id: id, folder: folder)].attach(session: session, kind: tab.agentID == "codex" ? "codex" : "claude", tab: tab.id.uuidString)
         let store = workstreamStore
-        let kind = tab.kind == .codex ? "codex" : "claude"
+        let kind = tab.agentID == "codex" ? "codex" : "claude"
         workstreamQueue.async {
             do { try store.moveAgent(session: session, kind: kind, tab: tab.id.uuidString, to: id, folder: folder) } catch {
                 DebugLog.log("couldn't move session \(session.prefix(8)) to workstream \(id.prefix(8)): \(error)", "workstream")
@@ -421,7 +421,7 @@ public final class WorkstreamsModel {
     private func openWorkstreamTab(_ name: String, folder: String, in groupID: UUID) {
         let workstream = UUID().uuidString
         modifyWorkstream(workstream) { $0.folder = folder; $0.name = name }
-        guard let id = host.openTab(kind: .claude, in: groupID, folder: folder, title: name) else { return }
+        guard let id = host.openTab(agent: "claude", in: groupID, folder: folder, title: name) else { return }
         setWorkstreamID(workstream, of: id)
     }
 

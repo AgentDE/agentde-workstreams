@@ -199,7 +199,7 @@ struct WorkstreamPanel: View {
     /// This agent's own to-do list, then the other attached agents' lists, folded and labeled.
     @ViewBuilder private func planSections(agents: [TabInfo], now: Date) -> some View {
         let lists = ([tab] + agents.filter { $0.id != tab.id }).compactMap { agent -> (TabInfo, PlanList)? in
-            guard agent.kind != .codex, let session = agent.agentSession,
+            guard agent.agentID != "codex", let session = agent.agentSession,
                   let list = store.plan(forSession: session), !list.steps.isEmpty else { return nil }
             return (agent, list)
         }
