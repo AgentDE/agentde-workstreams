@@ -51,9 +51,7 @@ public final class WorkstreamsExtension: AgentDEExtension, WidgetProvider {
     public func liveSessionsChanged(_ live: Set<String>) { model.updateLiveSessions(live) }
     public func agentWentIdle(_ tab: TabInfo) { model.takeDueDefaults() }
 
-    public func tabClosing(_ tab: TabInfo, keepAgent: Bool) {
-        if !keepAgent { model.detachAgent(of: tab) }
-    }
+    public func tabClosing(_ tab: TabInfo) { model.detachAgent(of: tab) }
 
     /// A background session already in a workstream rejoins it. A fork (`/fork`) gets a workstream of its own,
     /// starting with a copy of its parent's overview, rules and memory; any other gets a new, empty one.
