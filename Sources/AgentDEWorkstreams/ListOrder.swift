@@ -27,14 +27,16 @@ struct ListItem: Equatable {
     var size: Int64?
     /// How often you opened it in a viewer.
     var opened = 0
+    /// Hidden from the list until a filter matches it.
+    var hidden = false
 }
 
 enum ListOrder {
     /// `items` matching every word of `filter` (in the name or the path or link, so `.pptx` filters by type),
-    /// in `sort` order; ties go newest first, then by name.
+    /// in `sort` order; ties go newest first, then by name. Hidden items show only when a filter matches them.
     static func arrange(_ items: [ListItem], sort: ListSort, filter: String) -> [ListItem] {
         let words = filter.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-        let kept = words.isEmpty ? items : items.filter { item in
+        let kept = words.isEmpty ? items.filter { !$0.hidden } : items.filter { item in
             let haystack = (item.name + " " + item.key).lowercased()
             return words.allSatisfy { haystack.contains($0) }
         }

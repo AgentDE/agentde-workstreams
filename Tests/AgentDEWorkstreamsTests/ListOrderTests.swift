@@ -36,4 +36,13 @@ struct ListOrderTests {
         #expect(ListOrder.arrange(items, sort: .recent, filter: "EXAMPLE").map(\.name) == ["Report"])
         #expect(ListOrder.arrange(items, sort: .recent, filter: "zzz").isEmpty)
     }
+
+    /// Hidden items drop out of the list, and a filter that matches them brings them back.
+    @Test func hiddenShowOnlyWhenFiltered() {
+        var list = items
+        list[0].hidden = true   // deck.pptx
+        #expect(ListOrder.arrange(list, sort: .recent, filter: "").map(\.name) == ["notes.md", "Report", "main.swift"])
+        #expect(ListOrder.arrange(list, sort: .recent, filter: "deck").map(\.name) == ["deck.pptx"])
+        #expect(ListOrder.arrange(list, sort: .recent, filter: "/r/").map(\.name) == ["notes.md", "deck.pptx", "main.swift"])
+    }
 }

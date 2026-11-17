@@ -144,6 +144,7 @@ struct WorkstreamPanel: View {
         let pinned = workstream?.files?.items ?? []
         let shown = Set(pinned.map(\.path))
         let files = activity.allFiles().filter { !shown.contains($0.path) && FileManager.default.fileExists(atPath: $0.path) }
+        let hidden = Set(workstream?.hidden ?? [])
         if !pinned.isEmpty || !files.isEmpty {
             let updated = [workstream?.files?.updated, files.compactMap(\.lastEdit).max()].compactMap { $0 }.max()
             PanelSection(key: "files", title: "Files", updated: updated, now: now, tab: tab) {
@@ -156,8 +157,8 @@ struct WorkstreamPanel: View {
                         SortedList(files: true, heading: pinned.isEmpty ? nil : "Activity", now: now,
                                    items: files.map { ListItem(key: $0.path, name: ($0.path as NSString).lastPathComponent,
                                                                date: $0.lastEdit ?? $0.lastTouch, count: $0.count,
-                                                               opened: store.host.viewerOpens($0.path)) }) { item, detail in
-                            ActivityFileRow(path: item.key, detail: detail, tab: tab)
+                                                               opened: store.host.viewerOpens($0.path), hidden: hidden.contains($0.path)) }) { item, detail in
+                            ActivityFileRow(path: item.key, detail: detail, tab: tab, hidden: item.hidden)
                         }
                     }
                 }
@@ -171,9 +172,10 @@ struct WorkstreamPanel: View {
         let pinned = workstream?.pinnedArtifacts?.items ?? []
         let pinnedURLs = Set(pinned.map(\.url))
         let recent = activity.artifacts(500).filter { !pinnedURLs.contains($0.artifact.url) }
+        let hidden = Set(workstream?.hidden ?? [])
         if !pinned.isEmpty || !recent.isEmpty {
             let updated = [workstream?.pinnedArtifacts?.updated, recent.first?.artifact.at].compactMap { $0 }.max()
-            PanelSection(key: "artifacts", title: "Artifacts", count: "\(pinned.count + recent.count)", updated: updated, now: now, tab: tab) {
+            PanelSection(key: "artifacts", title: "Artifacts", count: "\(pinned.count + recent.filter { !hidden.contains($0.artifact.url) }.count)", updated: updated, now: now, tab: tab) {
                 VStack(alignment: .leading, spacing: 1) {
                     if !pinned.isEmpty {
                         FilesSubheading(title: "Pinned")
@@ -188,10 +190,11 @@ struct WorkstreamPanel: View {
                                    items: recent.map { row in
                                        ListItem(key: row.artifact.url, name: row.artifact.title ?? (row.artifact.url as NSString).lastPathComponent,
                                                 date: row.artifact.at, count: mentions[row.artifact.url] ?? 1,
-                                                opened: store.host.viewerOpens(row.artifact.url))
+                                                opened: store.host.viewerOpens(row.artifact.url), hidden: hidden.contains(row.artifact.url))
                                    }) { item, _ in
                             if let row = byURL[item.key] {
-                                ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now)
+                                ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now,
+                                            hidden: item.hidden)
                             }
                         }
                     }
@@ -803,11 +806,12 @@ private struct MessageRow: View {
     }
 }
 
-/// A file from the agents' transcripts (Recent or High activity): opens in the viewer.
+/// A file from the agents' transcripts (Recent or High activity): opens in the viewer. Right-click to pin or hide it.
 private struct ActivityFileRow: View {
     let path: String
     let detail: String
     let tab: TabInfo
+    var hidden = false
     @Environment(WorkstreamsModel.self) private var store
     @Environment(\.theme) private var theme
     @State private var hovering = false
@@ -830,6 +834,12 @@ private struct ActivityFileRow: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(path.abbreviatingHome)
+        .contextMenu {
+            Button("Pin") { store.togglePinned(path, in: tab) }
+            Button(hidden ? "Unhide" : "Hide") { store.toggleHidden(path, in: tab) }
+            Divider()
+            Button("Copy Path") { copy(path) }
+        }
     }
 }
 
@@ -840,6 +850,7 @@ private struct ArtifactRow: View {
     let agent: String?
     let now: Date
     var pinned = false
+    var hidden = false
     @Environment(WorkstreamsModel.self) private var store
     @Environment(\.theme) private var theme
     @State private var hovering = false
@@ -869,6 +880,7 @@ private struct ArtifactRow: View {
             Button(pinned ? "Unpin" : "Pin") {
                 store.togglePinnedArtifact(TranscriptFacts.Artifact(url: url, title: title, at: row.artifact.at), in: tab)
             }
+            if !pinned { Button(hidden ? "Unhide" : "Hide") { store.toggleHidden(url, in: tab) } }
             Divider()
             Button("Copy Title") { copy(title) }
             Button(url.hasPrefix("/") ? "Copy Path" : "Copy Link") { copy(url) }
@@ -986,7 +998,8 @@ enum Stat {
 
 /// A Files or Artifacts list you can sort (most recent, most used or mentioned, biggest, name) and filter (by name
 /// or path, so `.pptx` works as a type filter): the first 10, then a fold for the rest. The controls show once
-/// there are 5 or more; the sort is remembered per list.
+/// there are 5 or more, or any are hidden; the sort is remembered per list. Hidden items show, dimmed, only when the
+/// filter matches them.
 private struct SortedList<Row: View>: View {
     let files: Bool
     let heading: String?
@@ -1011,7 +1024,8 @@ private struct SortedList<Row: View>: View {
         let sort = ListSort(rawValue: sortRaw) ?? .recent
         let sized = sort == .biggest ? items.map { item in var item = item; item.size = ListOrder.size(of: item.key); return item } : items
         let ordered = ListOrder.arrange(sized, sort: sort, filter: filter)
-        let controls = items.count >= 5
+        let hiddenCount = items.filter(\.hidden).count
+        let controls = items.count >= 5 || hiddenCount > 0
         VStack(alignment: .leading, spacing: 1) {
             if heading != nil || controls {
                 HStack(spacing: 6) {
@@ -1043,7 +1057,7 @@ private struct SortedList<Row: View>: View {
                 .padding(.bottom, 2)
             }
             ForEach(Array((showAll ? ordered : Array(ordered.prefix(10))).enumerated()), id: \.element.key) { _, item in
-                row(item, detail(item, sort))
+                row(item, detail(item, sort)).opacity(item.hidden ? 0.5 : 1)
             }
             if ordered.isEmpty, !filter.isEmpty {
                 Text("Nothing matches").font(.system(size: 11)).foregroundStyle(theme.muted).padding(.vertical, 2)
@@ -1054,6 +1068,9 @@ private struct SortedList<Row: View>: View {
                     .font(.system(size: 11))
                     .foregroundStyle(theme.muted)
                     .padding(.top, 2)
+            }
+            if hiddenCount > 0, filter.isEmpty {
+                Text("\(hiddenCount) hidden: filter to find").font(.system(size: 11)).foregroundStyle(theme.muted).padding(.top, 2)
             }
         }
     }
