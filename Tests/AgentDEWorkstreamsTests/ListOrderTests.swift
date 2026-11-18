@@ -29,6 +29,24 @@ struct ListOrderTests {
         #expect(ListOrder.arrange(items, sort: .name, filter: "").map(\.name) == ["deck.pptx", "main.swift", "notes.md", "Report"])
     }
 
+    /// Created and opened recency are separate: each goes newest first, items without one last (by edit time).
+    @Test func createdAndOpenedRecency() {
+        var list = items
+        list[2].created = now.addingTimeInterval(-10)     // main.swift: newest file, though edited longest ago
+        list[0].created = now.addingTimeInterval(-500)    // deck.pptx
+        list[3].lastOpened = now.addingTimeInterval(-5)   // Report
+        list[0].lastOpened = now.addingTimeInterval(-50)  // deck.pptx
+        #expect(ListOrder.arrange(list, sort: .created, filter: "").map(\.name) == ["main.swift", "deck.pptx", "notes.md", "Report"])
+        #expect(ListOrder.arrange(list, sort: .lastOpened, filter: "").map(\.name) == ["Report", "deck.pptx", "notes.md", "main.swift"])
+    }
+
+    /// Artifacts have no edits: their menu has no "Recently edited", and an old saved "recent" reads as created.
+    @Test func artifactsSortByCreation() {
+        #expect(!ListSort.options(files: false).contains(.recent) && ListSort.options(files: true).contains(.recent))
+        #expect(ListSort.saved("recent", files: false) == .created && ListSort.saved("recent", files: true) == .recent)
+        #expect(ListSort.saved("", files: false) == .created && ListSort.saved("", files: true) == .recent)
+    }
+
     /// Every word must match the name or the path; an extension works as a type filter.
     @Test func filters() {
         #expect(ListOrder.arrange(items, sort: .recent, filter: ".pptx").map(\.name) == ["deck.pptx"])

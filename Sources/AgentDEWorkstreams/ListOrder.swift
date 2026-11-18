@@ -2,19 +2,32 @@ import Foundation
 
 /// How the panel's Files and Artifacts lists sort (the menu beside their filter).
 enum ListSort: String, CaseIterable {
-    case mix, recent, opened, used, biggest, name
+    case mix, created, recent, lastOpened, opened, used, biggest, name
 
+    /// "Recently edited" is the agents' last read or edit of a file. An artifact's appearing is its creation, so
+    /// artifacts sort by `created` instead (a saved `recent` reads as that).
     /// "Most used" for files (the agents' reads and edits), "Most mentioned" for artifacts (how often linked).
     /// Mix: most opened by you, then most used or mentioned, then most recent.
     func label(files: Bool) -> String {
         switch self {
         case .mix: "Mix"
-        case .recent: "Most recent"
+        case .created: "Recently created"
+        case .recent: files ? "Recently edited" : "Recently created"
+        case .lastOpened: "Recently opened"
         case .opened: "Most opened"
         case .used: files ? "Most used" : "Most mentioned"
         case .biggest: "Biggest"
         case .name: "Name"
         }
+    }
+
+    /// The choices in the menu: artifacts have no edits of their own.
+    static func options(files: Bool) -> [ListSort] { files ? allCases : allCases.filter { $0 != .recent } }
+
+    /// A saved choice, as this list reads it.
+    static func saved(_ raw: String, files: Bool) -> ListSort {
+        let sort = ListSort(rawValue: raw) ?? (files ? .recent : .created)
+        return !files && sort == .recent ? .created : sort
     }
 }
 
@@ -27,6 +40,10 @@ struct ListItem: Equatable {
     var size: Int64?
     /// How often you opened it in a viewer.
     var opened = 0
+    /// When it was created: a file's creation on disk, an artifact's first appearance.
+    var created: Date?
+    /// When you last opened it in a viewer.
+    var lastOpened: Date?
     /// Hidden from the list until a filter matches it.
     var hidden = false
 }
@@ -40,6 +57,11 @@ enum ListOrder {
             let haystack = (item.name + " " + item.key).lowercased()
             return words.allSatisfy { haystack.contains($0) }
         }
+        /// Newest `key` first; items without one go last, newest `date` first.
+        func later(_ key: (ListItem) -> Date?, _ a: ListItem, _ b: ListItem) -> Bool {
+            let (x, y) = (key(a) ?? .distantPast, key(b) ?? .distantPast)
+            return x != y ? x > y : newer(a, b)
+        }
         func newer(_ a: ListItem, _ b: ListItem) -> Bool {
             let (x, y) = (a.date ?? .distantPast, b.date ?? .distantPast)
             return x != y ? x > y : a.name.localizedStandardCompare(b.name) == .orderedAscending
@@ -47,6 +69,8 @@ enum ListOrder {
         return kept.sorted { a, b in
             switch sort {
             case .recent: return newer(a, b)
+            case .created: return later(\.created, a, b)
+            case .lastOpened: return later(\.lastOpened, a, b)
             case .opened: return a.opened != b.opened ? a.opened > b.opened : newer(a, b)
             case .mix:
                 if a.opened != b.opened { return a.opened > b.opened }
@@ -58,6 +82,12 @@ enum ListOrder {
                 return order != .orderedSame ? order == .orderedAscending : newer(a, b)
             }
         }
+    }
+
+    /// A local file's creation date; nil for links and missing files.
+    static func created(_ path: String) -> Date? {
+        guard path.hasPrefix("/") else { return nil }
+        return (try? FileManager.default.attributesOfItem(atPath: path)[.creationDate]) as? Date
     }
 
     /// A local file's size; nil for links and missing files.

@@ -157,7 +157,8 @@ struct WorkstreamPanel: View {
                         SortedList(files: true, heading: pinned.isEmpty ? nil : "Activity", now: now,
                                    items: files.map { ListItem(key: $0.path, name: ($0.path as NSString).lastPathComponent,
                                                                date: $0.lastEdit ?? $0.lastTouch, count: $0.count,
-                                                               opened: store.host.viewerOpens($0.path), hidden: hidden.contains($0.path)) }) { item, detail in
+                                                               opened: store.host.viewerOpens($0.path),
+                                                               lastOpened: store.host.viewerLastOpened($0.path), hidden: hidden.contains($0.path)) }) { item, detail in
                             ActivityFileRow(path: item.key, detail: detail, tab: tab, hidden: item.hidden)
                         }
                     }
@@ -190,7 +191,8 @@ struct WorkstreamPanel: View {
                                    items: recent.map { row in
                                        ListItem(key: row.artifact.url, name: row.artifact.title ?? (row.artifact.url as NSString).lastPathComponent,
                                                 date: row.artifact.at, count: mentions[row.artifact.url] ?? 1,
-                                                opened: store.host.viewerOpens(row.artifact.url), hidden: hidden.contains(row.artifact.url))
+                                                opened: store.host.viewerOpens(row.artifact.url), created: row.artifact.at,
+                                                lastOpened: store.host.viewerLastOpened(row.artifact.url), hidden: hidden.contains(row.artifact.url))
                                    }) { item, _ in
                             if let row = byURL[item.key] {
                                 ArtifactRow(row: row, tab: tab, agent: activity.perAgent.count > 1 ? agentName(row.agent, agents) : nil, now: now,
@@ -1021,8 +1023,13 @@ private struct SortedList<Row: View>: View {
     }
 
     var body: some View {
-        let sort = ListSort(rawValue: sortRaw) ?? .recent
-        let sized = sort == .biggest ? items.map { item in var item = item; item.size = ListOrder.size(of: item.key); return item } : items
+        let sort = ListSort.saved(sortRaw, files: files)
+        // Sizes and files' creation dates are read from disk only when the sort needs them.
+        let sized = sort != .biggest && !(sort == .created && files) ? items : items.map { item in
+            var item = item
+            if sort == .biggest { item.size = ListOrder.size(of: item.key) } else { item.created = ListOrder.created(item.key) }
+            return item
+        }
         let ordered = ListOrder.arrange(sized, sort: sort, filter: filter)
         let hiddenCount = items.filter(\.hidden).count
         let controls = items.count >= 5 || hiddenCount > 0
@@ -1037,7 +1044,7 @@ private struct SortedList<Row: View>: View {
                             .font(.system(size: 11))
                             .onKeyPress(.escape) { filter = ""; return .handled }
                         Menu {
-                            ForEach(ListSort.allCases, id: \.self) { option in
+                            ForEach(ListSort.options(files: files), id: \.self) { option in
                                 Button((option == sort ? "✓ " : "    ") + option.label(files: files)) { sortRaw = option.rawValue }
                             }
                         } label: {
@@ -1082,6 +1089,8 @@ private struct SortedList<Row: View>: View {
         case .opened, .mix: item.opened > 0 ? "\(item.opened)×" : (item.date.map { PanelSectionTime.short($0, now: now) } ?? "")
         case .biggest: item.size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? ""
         case .recent, .name: item.date.map { PanelSectionTime.short($0, now: now) } ?? ""
+        case .created: item.created.map { PanelSectionTime.short($0, now: now) } ?? ""
+        case .lastOpened: item.lastOpened.map { PanelSectionTime.short($0, now: now) } ?? ""
         }
     }
 }
